@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Flame, Dumbbell, Utensils, TrendingUp, Sparkles } from 'lucide-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import Link from 'next/link';
 
 export default function DashboardPage() {
+  const supabase = createClientComponentClient();
   const [profile, setProfile] = useState(null);
-  const [todayCalories, setTodayCalories] = useState(0);
-  const [todayProtein, setTodayProtein] = useState(0);
+  const [todayLog, setTodayLog] = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchDashboardData() {
+    async function fetchUserData() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. جلب بيانات الملف الشخصي والأهداف
+      // 1. جلب بيانات ملف المستخدم والأهداف
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -24,83 +24,75 @@ export default function DashboardPage() {
 
       if (profileData) setProfile(profileData);
 
-      // 2. جلب مجموع وجبات اليوم
+      // 2. جلب سجل اليوم الحالي
       const today = new Date().toISOString().split('T')[0];
-      const { data: mealsData } = await supabase
-        .from('meals')
-        .select('calories, protein')
+      const { data: logData } = await supabase
+        .from('daily_logs')
+        .select('*')
         .eq('user_id', user.id)
-        .gte('created_at', `${today}T00:00:00.000Z`);
+        .eq('date', today)
+        .single();
 
-      if (mealsData) {
-        const totalCals = mealsData.reduce((acc, item) => acc + item.calories, 0);
-        const totalProt = mealsData.reduce((acc, item) => acc + item.protein, 0);
-        setTodayCalories(totalCals);
-        setTodayProtein(totalProt);
+      if (logData) {
+        setTodayLog({
+          calories: logData.calories || 0,
+          protein: logData.protein || 0,
+          carbs: logData.carbs || 0,
+          fats: logData.fats || 0,
+        });
       }
-
       setLoading(false);
     }
 
-    fetchDashboardData();
-  }, []);
+    fetchUserData();
+  }, [supabase]);
 
-  if (loading) return <div className="text-cyan-400 p-8">جاري تحميل لوحة التحكم...</div>;
+  if (loading) return <div className="p-8 text-center text-slate-400">جاري تحميل بياناتك الحقيقية...</div>;
 
-  const targetCals = profile?.target_calories || 2000;
-  const targetProt = profile?.target_protein || 150;
+  if (!profile) {
+    return (
+      <div className="p-8 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold mb-2">أهلاً بك معنا! 👋</h2>
+        <p className="text-slate-400 text-sm mb-4">لم تقم بإدخال بياناتك الرياضية بعد لحساب احتياجك اليومي.</p>
+        <Link href="/onboarding" className="bg-cyan-500 text-slate-950 font-bold px-6 py-2.5 rounded-xl inline-block">
+          إعداد خطتك الآن 🚀
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto font-sans" dir="rtl">
-      <div>
-        <h1 className="text-2xl font-black text-white">مرحباً بك مجدداً 👋</h1>
-        <p className="text-slate-400 text-xs">نظرة عامة على تقدمك اليومي وبناءً على خطتك الذكية</p>
+    <div className="p-6 max-w-5xl mx-auto space-y-6 text-white">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">مرحباً {profile.full_name || 'يا بطل'} 👋</h1>
+          <p className="text-xs text-slate-400">الهدف الحالي: {profile.goal}</p>
+        </div>
+        <Link href="/onboarding" className="text-xs text-cyan-400 underline">تعديل الهدف والبيانات</Link>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-panel p-5 rounded-2xl border border-white/10 bg-slate-900/40">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-slate-400 text-xs font-semibold">السعرات اليومية</span>
-            <Flame className="w-5 h-5 text-amber-400" />
-          </div>
-          <div className="text-2xl font-black text-white">{todayCalories} <span className="text-xs font-normal text-slate-400">/ {targetCals} kcal</span></div>
-          <div className="w-full bg-white/10 h-2 rounded-full mt-3 overflow-hidden">
-            <div className="bg-amber-400 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min((todayCalories / targetCals) * 100, 100)}%` }} />
-          </div>
+      {/* العناصر الغذائية - أرقام حقيقية */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <p className="text-xs text-slate-400">إجمالي السعرات</p>
+          <p className="text-2xl font-bold text-cyan-400 mt-1">{todayLog.calories} / <span className="text-base text-slate-500">{profile.target_calories} kcal</span></p>
         </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-white/10 bg-slate-900/40">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-slate-400 text-xs font-semibold">البروتين المستهلك</span>
-            <Dumbbell className="w-5 h-5 text-cyan-400" />
-          </div>
-          <div className="text-2xl font-black text-white">{todayProtein}g <span className="text-xs font-normal text-slate-400">/ {targetProt}g</span></div>
-          <div className="w-full bg-white/10 h-2 rounded-full mt-3 overflow-hidden">
-            <div className="bg-cyan-400 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min((todayProtein / targetProt) * 100, 100)}%` }} />
-          </div>
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <p className="text-xs text-slate-400">البروتين الصافي</p>
+          <p className="text-2xl font-bold text-emerald-400 mt-1">{todayLog.protein}g / <span className="text-base text-slate-500">{profile.target_protein}g</span></p>
         </div>
 
-        <div className="glass-panel p-5 rounded-2xl border border-white/10 bg-slate-900/40">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-slate-400 text-xs font-semibold">الهدف الحالي</span>
-            <TrendingUp className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div className="text-lg font-bold text-white">{profile?.goal || 'غير محدد'}</div>
-          <p className="text-xs text-slate-400 mt-2">الوزن الحالي: {profile?.current_weight || '--'} كجم</p>
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <p className="text-xs text-slate-400">الكربوهيدرات</p>
+          <p className="text-2xl font-bold text-amber-400 mt-1">{todayLog.carbs}g / <span className="text-base text-slate-500">{profile.target_carbs}g</span></p>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <p className="text-xs text-slate-400">الدهون الصحية</p>
+          <p className="text-2xl font-bold text-purple-400 mt-1">{todayLog.fats}g / <span className="text-base text-slate-500">{profile.target_fats}g</span></p>
         </div>
       </div>
-
-      {/* AI Advice Box */}
-      {profile?.ai_plan && (
-        <div className="glass-panel p-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/5">
-          <div className="flex items-center gap-2 text-cyan-400 font-bold mb-2 text-sm">
-            <Sparkles className="w-4 h-4" />
-            <span>نصيحة الخطة الذكية المخصصة لك</span>
-          </div>
-          <p className="text-slate-300 text-xs leading-relaxed">{profile.ai_plan.advice}</p>
-        </div>
-      )}
     </div>
   );
 }

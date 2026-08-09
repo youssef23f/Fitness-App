@@ -1,20 +1,47 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Activity, Sparkles, ArrowLeft } from 'lucide-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function OnboardingPage() {
+  const supabase = createClientComponentClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
   const [formData, setFormData] = useState({
+    fullName: '',
     age: '',
-    weight: '',
+    gender: 'male',
     height: '',
-    goal: 'Weight Loss',
-    activity_level: 'Moderate'
+    weight: '',
+    activityLevel: '1.375', // Moderate
+    goal: 'maintain', // maintain, lose, gain
   });
+
+  const calculateMacros = () => {
+    const weight = parseFloat(formData.weight);
+    const height = parseFloat(formData.height);
+    const age = parseInt(formData.age);
+    const activity = parseFloat(formData.activityLevel);
+
+    // BMR using Mifflin-St Jeor Formula
+    let bmr = 10 * weight + 6.25 * height - 5 * age;
+    bmr = formData.gender === 'male' ? bmr + 5 : bmr - 161;
+
+    let tdee = bmr * activity;
+
+    // Adjust target calories based on goal
+    if (formData.goal === 'lose') tdee -= 500;
+    if (formData.goal === 'gain') tdee += 400;
+
+    const calories = Math.round(tdee);
+    const protein = Math.round(weight * 2); // 2g per kg
+    const fats = Math.round((calories * 0.25) / 9);
+    const carbs = Math.round((calories - (protein * 4 + fats * 9)) / 4);
+
+    return { calories, protein, carbs, fats };
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,116 +49,93 @@ export default function OnboardingPage() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("غير مسجل دخول");
+      if (!user) throw new Error('المستخدم غير مسجل');
 
-      // 1. طلب خطة مخصصة من الـ AI بناءً على البيانات
-      const res = await fetch('/api/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      const planData = await res.json();
+      const targets = calculateMacros();
 
-      // 2. حفظ البيانات والخطة في Supabase
       const { error } = await supabase.from('profiles').upsert({
         id: user.id,
+        full_name: formData.fullName,
         age: parseInt(formData.age),
-        current_weight: parseFloat(formData.weight),
+        gender: formData.gender,
         height: parseFloat(formData.height),
+        weight: parseFloat(formData.weight),
+        activity_level: formData.activityLevel,
         goal: formData.goal,
-        activity_level: formData.activity_level,
-        target_calories: planData.target_calories || 2000,
-        target_protein: planData.target_protein || 150,
-        ai_plan: planData.plan_details,
+        target_calories: targets.calories,
+        target_protein: targets.protein,
+        target_carbs: targets.carbs,
+        target_fats: targets.fats,
+        updated_at: new Date().toISOString(),
       });
 
       if (error) throw error;
       router.push('/dashboard');
     } catch (err) {
-      alert('حدث خطأ: ' + err.message);
+      alert('حدث خطأ أثناء حفظ البيانات: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#080C14] flex items-center justify-center p-4 font-sans" dir="rtl">
-      <div className="w-full max-w-lg glass-panel p-8 rounded-3xl border border-white/10 shadow-2xl bg-slate-900/50 backdrop-blur-xl">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            <Activity className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white">إعداد خطتك الرياضية</h1>
-            <p className="text-xs text-slate-400">أدخل بياناتك ليقوم الـ AI بتصميم جدولك الخاص</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+        <h1 className="text-2xl font-bold text-center mb-2">إعداد ملفك الرياضي 🎯</h1>
+        <p className="text-sm text-slate-400 text-center mb-6">أدخل بياناتك لحساب سعراتك المخصصة بالذكاء الاصطناعي</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-slate-300 block mb-1">الاسم الكامل</label>
+            <input type="text" required value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm" placeholder="أدخل اسمك" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">السن</label>
-              <input
-                type="number"
-                required
-                placeholder="24"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-400"
-              />
+              <label className="text-xs text-slate-300 block mb-1">العمر</label>
+              <input type="number" required value={formData.age} onChange={(e) => setFormData({...formData, age: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm" placeholder="25" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">الوزن (كجم)</label>
-              <input
-                type="number"
-                required
-                placeholder="75"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-400"
-              />
+              <label className="text-xs text-slate-300 block mb-1">النوع</label>
+              <select value={formData.gender} onChange={(e) => setFormData({...formData, gender: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm">
+                <option value="male">ذكر</option>
+                <option value="female">أنثى</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-300 block mb-1">الطول (سم)</label>
+              <input type="number" required value={formData.height} onChange={(e) => setFormData({...formData, height: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm" placeholder="175" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-300 block mb-1">الوزن (كجم)</label>
+              <input type="number" required value={formData.weight} onChange={(e) => setFormData({...formData, weight: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm" placeholder="70" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">الطول (سم)</label>
-            <input
-              type="number"
-              required
-              placeholder="178"
-              value={formData.height}
-              onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">الهدف الرئيسي</label>
-            <select
-              value={formData.goal}
-              onChange={(e) => setFormData({ ...formData, goal: e.target.value })}
-              className="w-full bg-[#080C14] border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-400"
-            >
-              <option value="Weight Loss">تنشيف وإنقاص الوزن (Fat Loss)</option>
-              <option value="Muscle Gain">بناء عضلات (Clean Bulk)</option>
-              <option value="Weight Gain">زيادة الوزن الكلي (Weight Gain)</option>
-              <option value="Maintenance">الحفاظ على اللياقة (Maintenance)</option>
+            <label className="text-xs text-slate-300 block mb-1">الهدف</label>
+            <select value={formData.goal} onChange={(e) => setFormData({...formData, goal: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm">
+              <option value="lose">خسارة وزن (تنشيف)</option>
+              <option value="maintain">المحافظة على الوزن الحالي</option>
+              <option value="gain">زيادة عضلات (تضخيم)</option>
             </select>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-4 py-4 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-bold text-sm rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? (
-              <span>جاري تحليل البيانات وإنشاء الخطة...</span>
-            ) : (
-              <>
-                <span>إنشاء الخطة عبر الـ AI</span>
-                <Sparkles className="w-4 h-4" />
-              </>
-            )}
+          <div>
+            <label className="text-xs text-slate-300 block mb-1">مستوى النشاط اليومي</label>
+            <select value={formData.activityLevel} onChange={(e) => setFormData({...formData, activityLevel: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm">
+              <option value="1.2">خامل (قليل الحركة جداً)</option>
+              <option value="1.375">نشاط خفيف (تمرين 1-3 أيام)</option>
+              <option value="1.55">نشاط متوسط (تمرين 3-5 أيام)</option>
+              <option value="1.725">نشاط عالٍ (تمرين شاق يومياً)</option>
+            </select>
+          </div>
+
+          <button type="submit" disabled={loading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-3 rounded-xl transition mt-4">
+            {loading ? 'جاري الحساب والحفظ...' : 'حفظ وإنشاء الخطة 🚀'}
           </button>
         </form>
       </div>
