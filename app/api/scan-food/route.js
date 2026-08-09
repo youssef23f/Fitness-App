@@ -3,21 +3,20 @@ import { analyzeFoodImage } from '@/lib/ai';
 
 export async function POST(req) {
   try {
-    const { image } = await req.json();
+    const body = await req.json();
+    const { image } = body;
 
     if (!image) {
       return NextResponse.json(
-        { error: 'لم يتم توفير صورة للتحليل' },
+        { error: 'يرجى تزويد صورة الطعام' },
         { status: 400 }
       );
     }
 
-    // استدعاء دالة تحليل الوجبة من lib/ai.js
-    const nutritionData = await analyzeFoodImage(image);
-
-    return NextResponse.json(nutritionData);
+    const result = await analyzeFoodImage(image);
+    return NextResponse.json({ result });
   } catch (error) {
-    console.error('Error in scan-food API:', error);
+    console.error('Scan Food API Error:', error);
     return NextResponse.json(
       { error: 'حدث خطأ أثناء تحليل صورة الطعام' },
       { status: 500 }
