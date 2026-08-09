@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import { Send, Bot, User, Trash2, Loader2, Sparkles } from 'lucide-react';
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default function AICoachPage() {
-  const supabase = createClientComponentClient();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,14 +25,21 @@ export default function AICoachPage() {
     scrollToBottom();
   }, [messages, loading]);
 
-  // جلب بيانات المستخدم الحقيقية لتخصيص الترحيب
+  // جلب اسم المستخدم الحقيقي من جدول profiles أو Supabase Auth
   useEffect(() => {
     async function initUser() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const name = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
+        // البحث عن الاسم أولاً في جدول profiles
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+
+        const name = profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || '';
         setUserName(name);
-        
+
         setMessages([
           {
             role: 'assistant',
@@ -45,7 +56,7 @@ export default function AICoachPage() {
       }
     }
     initUser();
-  }, [supabase]);
+  }, []);
 
   // إرسال الرسالة إلى الـ API
   const handleSendMessage = async (e) => {
@@ -54,7 +65,7 @@ export default function AICoachPage() {
 
     const userMessage = { role: 'user', content: input };
     const newMessages = [...messages, userMessage];
-    
+
     setMessages(newMessages);
     setInput('');
     setLoading(true);

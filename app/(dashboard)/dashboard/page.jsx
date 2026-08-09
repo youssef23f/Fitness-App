@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default function DashboardPage() {
-  const supabase = createClientComponentClient();
   const [profile, setProfile] = useState(null);
   const [todayLog, setTodayLog] = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
   const [loading, setLoading] = useState(true);
@@ -13,14 +17,17 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchUserData() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       // 1. جلب بيانات ملف المستخدم والأهداف
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profileData) setProfile(profileData);
 
@@ -31,7 +38,7 @@ export default function DashboardPage() {
         .select('*')
         .eq('user_id', user.id)
         .eq('date', today)
-        .single();
+        .maybeSingle();
 
       if (logData) {
         setTodayLog({
@@ -45,7 +52,7 @@ export default function DashboardPage() {
     }
 
     fetchUserData();
-  }, [supabase]);
+  }, []);
 
   if (loading) return <div className="p-8 text-center text-slate-400">جاري تحميل بياناتك الحقيقية...</div>;
 
