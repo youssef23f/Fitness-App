@@ -1,34 +1,42 @@
-import { groq } from '@/lib/ai';
 import { NextResponse } from 'next/server';
+import { groq } from '@/lib/ai';
 
 export async function POST(req) {
   try {
-    const { message, userContext } = await req.json();
+    const body = await req.json();
+    const { messages, userName } = body;
 
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: `أنت كوتش رياضي ومستشار تغذية متقدم واسمك FITNESS.AI.
-          بيانات المستخدم الحالية:
-          - الوزن: ${userContext?.weight || 'غير محدد'} كجم
-          - الهدف: ${userContext?.goal || 'غير محدد'}
-          أجب عن أسئلة المستخدم باللغة العربية بأسلوب محفز، علمي ومباشر.`,
-        },
-        {
-          role: 'user',
-          content: message,
-        },
-      ],
-      model: 'llama-3.3-70b-versatile', // موديل مفتوح المصدر قوي وسريع للغاية
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json(
+        { error: 'قائمة الرسائل غير صالحة' },
+        { status: 400 }
+      );
+    }
+
+    const systemMessage = {
+      role: 'system',
+      content: `أنت كوتش لياقة وتغذية ذكي واحترافي اسمه FITNESS.AI Coach. تتحدث مع المستخدم ${
+        userName || 'يا بطل'
+      }. أسلوبك مشجع ومحفز، وإجاباتك دقيقة ومباشرة باللغة العربية. تقديم نصائح في التغذية والتمارين والتخصيص بناءً على أهداف المستخدم.`,
+    };
+
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [systemMessage, ...messages],
       temperature: 0.7,
+      max_tokens: 1024,
     });
 
-    const reply = completion.choices[0]?.message?.content || 'لم أستطع معالجة الطلب.';
+    const reply =
+      response.choices[0]?.message?.content ||
+      'عذراً، لم أستطع معالجة الإجابة حالياً. حاول مرة أخرى.';
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ result: reply });
   } catch (error) {
-    console.error('Groq AI Error:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء الاتصال بالـ AI' }, { status: 500 });
+    console.error('Chat API Error:', error);
+    return NextResponse.json(
+      { error: 'حدث خطأ أثناء الاتصال بالخادم' },
+      { status: 500 }
+    );
   }
 }
